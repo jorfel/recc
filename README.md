@@ -2,7 +2,7 @@
 
 Captures audio directly from Windows-x64 applications using DLL injection.
 
-## Usgae
+## Usage
 
     Records audio output from another application.
     Usage:

@@ -116,16 +116,15 @@ static void_task print_pipe(signal_context &ctx, const std::wstring &pipe_path, 
 }
 
 /// Coroutine for main stuff.
-static void_task capture(signal_context &ctx, HANDLE hprocess, const std::string &api, const std::string &format, const std::wstring &out_path, const std::wstring &log_path)
+static void_task capture(signal_context &ctx, HANDLE hprocess, const std::wstring &dllpath, const std::string &api, const std::string &format, const std::wstring &out_path, const std::wstring &log_path)
 {
     //inject DLL and call recc_log first
-    auto dllpath = std::filesystem::absolute(".\\recc_dll.dll");
-    handle_holder hthread = dll_call(hprocess, false, dllpath.wstring(), "recc_log", log_path);
+    handle_holder hthread = dll_call(hprocess, false, dllpath, "recc_log", log_path);
     if(DWORD c = co_await thread_awaiter(ctx, hthread.get()); c != 0)
         throw precise_error(c, "Thread for recc_log reported failure.");
 
     //call recc_capture
-    hthread = dll_call(hprocess, false, dllpath.wstring(), "recc_capture", out_path, api, format);
+    hthread = dll_call(hprocess, false, dllpath, "recc_capture", out_path, api, format);
     if(DWORD c = co_await thread_awaiter(ctx, hthread.get()); c != 0)
         throw precise_error(c, "Thread for recc_capture reported failure.");
 
@@ -135,7 +134,7 @@ static void_task capture(signal_context &ctx, HANDLE hprocess, const std::string
     co_await console_awaiter(ctx);
 
     //release capture and free DLL
-    hthread = dll_call(hprocess, true, dllpath.wstring(), "recc_release");
+    hthread = dll_call(hprocess, true, dllpath, "recc_release");
     if(DWORD c = co_await thread_awaiter(ctx, hthread.get()); c != 0)
         throw precise_error(c, "Thread for recc_release reported failure.");
 }
@@ -213,7 +212,16 @@ static int main2(int argc, char **argv)
         log_path = p.wstring();
     }
 
-    captask = capture(main_loop, hprocess.get(), optres["api"].as<std::string>(), optres["format"].as<std::string>(), out_path, log_path);
+    wchar_t exepath[MAX_PATH];
+    auto flen = GetModuleFileNameW(0, exepath, MAX_PATH);
+    if(flen == 0)
+        throw precise_error(GetLastError(), "GetModuleFileNameW failed.");
+
+    auto exepath_str = std::wstring(exepath, flen);
+    exepath_str.erase(exepath_str.find_last_of(L'\\')+1);
+    std::wstring dllpath = exepath_str + L"recc_dll.dll";
+
+    captask = capture(main_loop, hprocess.get(), dllpath, optres["api"].as<std::string>(), optres["format"].as<std::string>(), out_path, log_path);
     main_loop.run();
     return 0;
 }
@@ -222,6 +230,10 @@ int main(int argc, char **argv)
 {
     try
     {
+#ifndef NDEBUG
+        argc = 3;
+        char *argv[] = { (char*)"recc.exe", (char*)"-w", (char*)"xrns" };
+#endif
         return main2(argc, argv);
     }
     catch(const precise_error &e)

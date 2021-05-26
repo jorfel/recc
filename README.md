@@ -26,7 +26,7 @@ Captures audio directly from Windows-x64 applications using DLL injection.
 
 ## Building
 
-Run [cmake](https://cmake.org/) an build with latest MSVC. It must support C++20 and coroutines.
+Run [cmake](https://cmake.org/) and build with latest MSVC. It must support C++20 and coroutines.
 
 ## Used libraries
 

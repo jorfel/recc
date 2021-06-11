@@ -28,6 +28,13 @@ Captures audio directly from Windows-x64 applications using DLL injection.
 
 Run [cmake](https://cmake.org/) and build with latest MSVC. It must support C++20 and coroutines.
 
+This will build a standalone version:
+1) Create a folder and switch to it
+2) Run `cmake -G "Visual Studio 16 2019" -A x64 -D ASMJIT_STATIC=ON ..`
+3) Run `cmake --build . --config release`
+
+Now check out the `Release` folder.
+
 ## Used libraries
 
 * [cxxopts](https://github.com/jarro2783/cxxopts)

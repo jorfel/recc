@@ -1,10 +1,9 @@
 #pragma once
 
 #include <utility>
-#include <stdexcept>
 #include <handleapi.h>
 
-/// Automatically calls CloseHandle.
+/// Automatically calls CloseHandle on a Win32-handle on destruction.
 struct handle_holder
 {
     handle_holder(const handle_holder &) = delete;
@@ -38,12 +37,4 @@ struct handle_holder
     bool operator!() const { return handle == INVALID_HANDLE_VALUE || handle == 0; }
     operator bool() const { return !!handle; }
 
-};
-
-
-/// Contains (Win32-) error code and message.
-struct precise_error : public std::runtime_error
-{
-    HRESULT code;
-    precise_error(HRESULT code, std::string message) : code(code), runtime_error(std::move(message)) {}
 };

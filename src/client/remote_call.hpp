@@ -5,7 +5,9 @@
 #include <string>
 #include <Windows.h>
 
-#include "../common.hpp"
+#include "../handle_holder.hpp"
+#include "../win32_error.hpp"
+
 
 /// Utility for releasing stuff allocated with VirtualAllocEx
 struct valloc_releaser
@@ -17,7 +19,9 @@ struct valloc_releaser
 using valloc_ptr = std::unique_ptr<void, valloc_releaser>;
 
 
-/// Helper function for setting up the arguments.
+/// Emits assembly code that sets up a function's arguments, depending on the type.
+/// Integral arguments will be moved into registers, strings will get their
+/// address moved instead and their actual data will be emitted by emit_arguments_data().
 template<size_t Idx = 0, class Arg, class... Args>
 void emit_arguments(asmjit::x86::Assembler &as, const Arg &arg, const Args &...args)
 {
@@ -26,7 +30,7 @@ void emit_arguments(asmjit::x86::Assembler &as, const Arg &arg, const Args &...a
 
     static_assert(Idx < std::size(arg_registers), "too many arguments");
 
-    if constexpr(!std::is_integral_v<Arg>) //label for data in memory
+    if constexpr(!std::is_integral_v<Arg>) //create label to reference data in memory, assigned later
         as.lea(arg_registers[Idx], ptr(as.newNamedLabel(("arg" + std::to_string(Idx)).c_str())));
     else
         as.mov(arg_registers[Idx], arg); //immediate constant
@@ -35,7 +39,7 @@ void emit_arguments(asmjit::x86::Assembler &as, const Arg &arg, const Args &...a
         emit_arguments<Idx + 1>(as, args...);
 }
 
-/// Helper function for emitting string argument data.
+/// Emits string data and a label referencing it.
 template<size_t Idx = 0, class Arg, class... Args>
 void emit_arguments_data(asmjit::x86::Assembler &as, const Arg &arg, const Args &...args)
 {
@@ -66,7 +70,7 @@ static handle_holder dll_call(HANDLE hprocess, bool unloadafter, std::wstring_vi
     //allocate memory within other process' space
     valloc_ptr remotebuff(VirtualAllocEx(hprocess, nullptr, MaxAlloc, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READ), valloc_releaser{ hprocess });
     if(remotebuff == nullptr)
-        throw precise_error(GetLastError(), "VirtualAllocEx failed.");
+        throw win32_error(GetLastError(), "VirtualAllocEx failed.");
 
     //assemble code
     Environment env;
@@ -97,7 +101,7 @@ static handle_holder dll_call(HANDLE hprocess, bool unloadafter, std::wstring_vi
 
     //call GetProcAddress
     as.bind(as.labelByName("findfunc"));
-    as.mov(r12, rax); //r12 = module handle (nonvolatile register)
+    as.mov(r12, rax); //r12 = module handle (r12 is a non-clobbered register)
     as.mov(rcx, rax); //arg1 = module handle
     as.lea(rdx, ptr(as.newNamedLabel("funcname"))); //arg2 = funcname
     as.mov(rax, &GetProcAddress);
@@ -118,7 +122,7 @@ static handle_holder dll_call(HANDLE hprocess, bool unloadafter, std::wstring_vi
 
     //exit
     as.bind(as.labelByName("exit"));
-    as.mov(rsi, rax); //save last return value in rsi (nonvolatile register)
+    as.mov(rsi, rax); //save last return value in rsi (rsi is a non-clobbered register)
 
     if(unloadafter)
     {
@@ -152,7 +156,7 @@ static handle_holder dll_call(HANDLE hprocess, bool unloadafter, std::wstring_vi
     as.mov(r8, MEM_RELEASE);
     as.mov(rax, &VirtualFree);
     as.push(rdi);
-    as.jmp(rax); //jump instead of call, so VirtualFree will return to our stub
+    as.jmp(rax); //jump instead of call, so VirtualFree will return to our stub on the executable stack
     
     //data
     as.bind(as.labelByName("dllpath"));
@@ -170,12 +174,12 @@ static handle_holder dll_call(HANDLE hprocess, bool unloadafter, std::wstring_vi
 
     //write code
     if(WriteProcessMemory(hprocess, remotebuff.get(), buffer.data(), buffer.size(), nullptr) == FALSE)
-        throw precise_error(GetLastError(), "WriteProcessMemory failed.");
+        throw win32_error(GetLastError(), "WriteProcessMemory failed.");
 
     //create remote thread and execute generated code
     handle_holder hthread(CreateRemoteThread(hprocess, nullptr, 0, LPTHREAD_START_ROUTINE(remotebuff.get()), 0, 0, nullptr));
     if(!hthread)
-        throw precise_error(GetLastError(), "CreateRemoteThread failed.");
+        throw win32_error(GetLastError(), "CreateRemoteThread failed.");
 
     remotebuff.release(); //remote thread will free its memory by itself
     return hthread;

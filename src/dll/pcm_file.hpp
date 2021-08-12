@@ -4,6 +4,9 @@
 
 #include "capture_base.hpp"
 
+///
+/// Writes raw PCM samples to output stream.
+///
 class pcm_file : public outformat_base
 {
 public:

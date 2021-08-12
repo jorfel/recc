@@ -1,6 +1,7 @@
 #include "capture_dsound.hpp"
 
-#include "../common.hpp"
+#include "../handle_holder.hpp"
+#include "../win32_error.hpp"
 
 
 static constexpr auto com_releaser = [](IUnknown *t) { t->Release(); };
@@ -13,16 +14,16 @@ capture_dsound::capture_dsound(std::mutex &lock, std::ostream &log, outformat_ba
 	//create dummy IDirectSound and IDirectSoundBuffer
 	HMODULE hDirectSound = GetModuleHandleA("dsound.dll");
 	if(!hDirectSound)
-		throw precise_error(GetLastError(), "dsound.dll not loaded.");
+		throw win32_error(GetLastError(), "dsound.dll not loaded.");
 
 	using DirectSoundCreate_sig = HRESULT WINAPI(LPCGUID, LPDIRECTSOUND *, LPUNKNOWN);
 	DirectSoundCreate_sig *dsc = (DirectSoundCreate_sig *)GetProcAddress(hDirectSound, "DirectSoundCreate");
 	if(!dsc)
-		throw precise_error(GetLastError(), "DirectSoundCreate not in dsound.dll.");
+		throw win32_error(GetLastError(), "DirectSoundCreate not in dsound.dll.");
 
 	IDirectSound *sounddev;
 	if(auto err = dsc(nullptr, &sounddev, nullptr); err != S_OK)
-		throw precise_error(err, "DirectSoundCreate failed.");
+		throw win32_error(err, "DirectSoundCreate failed.");
 
 	com_ptr<IDirectSound> sounddev_raii(sounddev, com_releaser);
 
@@ -38,7 +39,7 @@ capture_dsound::capture_dsound(std::mutex &lock, std::ostream &log, outformat_ba
 	DSBUFFERDESC buffdesc = { sizeof(DSBUFFERDESC), 0, DSBSIZE_MIN, 0, &wfmt, GUID_NULL };
 	IDirectSoundBuffer *soundbuff;
 	if(auto err = sounddev->CreateSoundBuffer(&buffdesc, &soundbuff, nullptr); err != S_OK)
-		throw precise_error(err, "CreateSoundBuffer failed.");
+		throw win32_error(err, "CreateSoundBuffer failed.");
 
 	com_ptr<IDirectSoundBuffer> soundbuff_raii(soundbuff, com_releaser);
 
@@ -48,7 +49,7 @@ capture_dsound::capture_dsound(std::mutex &lock, std::ostream &log, outformat_ba
 
 	DWORD o;
 	if(!VirtualProtect(vtable, 0x1000, PAGE_READWRITE, &o))
-		throw precise_error(GetLastError(), "VirtualProtect failed.");
+		throw win32_error(GetLastError(), "VirtualProtect failed.");
 
 	vtable[0] = (unlock_func*)this; //first entry is QueryInterface, but probably unused, so put this in there
 	vtable[19] = &hook_unlock; //if aligned, this is atomic on x86

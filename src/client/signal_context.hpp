@@ -6,7 +6,8 @@
 #include <exception>
 
 #include <Windows.h>
-#include "../common.hpp"
+#include "../handle_holder.hpp"
+#include "../win32_error.hpp"
 
 ///
 /// Called by signal_context.
@@ -45,7 +46,7 @@ public:
         {
             DWORD ret = WaitForMultipleObjects(handles.size(), handles.data(), FALSE, INFINITE);
             if(ret == WAIT_FAILED)
-                throw precise_error(GetLastError(), "WaitForMultipleObjects failed.");
+                throw win32_error(GetLastError(), "WaitForMultipleObjects failed.");
 
             size_t idx = ret - WAIT_OBJECT_0;
             if(idx < handles.size())
@@ -105,7 +106,7 @@ public:
     void on_signaled() override
     {
         if(!GetExitCodeThread(handle, &code))
-            throw precise_error(GetLastError(), "GetExitCodeThread failed.");
+            throw win32_error(GetLastError(), "GetExitCodeThread failed.");
 
         handle_awaiter::on_signaled();
     }

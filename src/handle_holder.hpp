@@ -17,6 +17,9 @@ struct handle_holder
 
     handle_holder &operator=(handle_holder &&rhs) noexcept
     {
+        if(&rhs == this)
+            return *this;
+        
         close();
         handle = rhs.handle;
         rhs.handle = 0;
